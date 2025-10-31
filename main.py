@@ -154,13 +154,24 @@ def verify_ad(count):
     return "ok"
 
 # -------------------- Telegram Commands --------------------
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    ad_count[user_id] = 0
-    verified_users.discard(user_id)
-    web_url = f"{os.environ.get('RENDER_EXTERNAL_URL', 'http://localhost:5000')}/user/{user_id}"
-    keyboard = [[InlineKeyboardButton("🎬 Watch Ads", url=web_url)]]
-    await update.message.reply_text("Welcome! Watch ads to unlock your gift 🎁", reply_markup=InlineKeyboardMarkup(keyboard))
+async def updategift(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Check if the user is the admin
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("🚫 You don’t have permission to use this command.")
+        return
+
+    # Check if a new link is provided
+    if not context.args:
+        await update.message.reply_text("Usage: /updategift <new_link>")
+        return
+
+    # Update gift.txt with the new link
+    new_link = context.args[0]
+    with open("gift.txt", "w") as f:
+        f.write(new_link.strip())
+
+    await update.message.reply_text(f"✅ Gift link updated to:\n{new_link}")
+
 
 async def updategift(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
