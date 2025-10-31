@@ -1,178 +1,166 @@
 import os
+import json
+import threading
+from flask import Flask, render_template_string
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
-from flask import Flask, render_template_string, send_from_directory
-import threading
 
+# === CONFIG ===
 TOKEN = "8103309728:AAH-lGTT6KXIb9Qu5pMnA1qgiKottnugoKw"
-JOIN_CHANNEL_LINK = "https://t.me/gsf8mqOl0atkMTM0"
+ADMIN_ID = 590000000  # replace with your Telegram numeric ID
 
-# Read and update gift link
-def get_gift_link():
-    try:
-        with open("gift.txt", "r") as f:
-            return f.read().strip()
-    except:
-        return "https://example.com"
+CONFIG_FILE = "bot_config.json"
 
-def update_gift_link(new_link):
-    with open("gift.txt", "w") as f:
-        f.write(new_link.strip())
+# === DEFAULT SETTINGS ===
+DEFAULT_CONFIG = {
+    "mode": "monetag",  # can be "monetag" or "promo"
+    "gift_link": "https://example.com",
+    "promo_links": []
+}
 
-ad_count = {}  # user_id: ad views
-verified_users = set()  # users who truly watched ads
+# === CONFIG HANDLERS ===
+def load_config():
+    if not os.path.exists(CONFIG_FILE):
+        save_config(DEFAULT_CONFIG)
+    with open(CONFIG_FILE, "r") as f:
+        return json.load(f)
 
-# HTML Interface
-HTML_PAGE = """
+def save_config(config):
+    with open(CONFIG_FILE, "w") as f:
+        json.dump(config, f, indent=4)
+
+config = load_config()
+
+# === FLASK APP FOR ADS PAGE ===
+app = Flask(__name__)
+
+@app.route("/")
+def index():
+    if config["mode"] == "monetag":
+        return render_template_string(MONETAG_HTML)
+    else:
+        return render_template_string(PROMO_HTML, promo_links=config["promo_links"], gift_link=config["gift_link"])
+
+# Monetag HTML
+MONETAG_HTML = """
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Watch Ads to Unlock Gift</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      background: #0f0f0f;
-      color: #fff;
-      text-align: center;
-      padding: 30px;
-    }
-    h2 { color: #FFD700; }
-    .progress {
-      display: flex;
-      justify-content: center;
-      gap: 10px;
-      margin: 20px 0;
-    }
-    .circle {
-      width: 30px;
-      height: 30px;
-      border-radius: 50%;
-      background-color: #333;
-    }
-    .circle.active { background-color: #00FF88; }
-    .btn {
-      background: #6200ea;
-      color: #fff;
-      border: none;
-      padding: 14px 26px;
-      border-radius: 10px;
-      cursor: pointer;
-      font-size: 18px;
-      transition: 0.3s;
-    }
-    .btn:hover { background: #7b1ffa; }
-    .gift { display: none; margin-top: 20px; }
-    .gift a {
-      background: #2196F3;
-      color: #fff;
-      padding: 10px 20px;
-      border-radius: 8px;
-      text-decoration: none;
-    }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Watch Ads to Unlock Gift</title>
+<style>
+body { text-align: center; font-family: Arial; background: #f4f4f4; padding: 20px; }
+.btn { background: #4CAF50; color: white; padding: 10px 20px; border: none; border-radius: 8px; cursor: pointer; }
+</style>
 </head>
 <body>
-  <h2>🎥 Watch 5 Ads to Unlock Your Gift!</h2>
-  <div class="progress" id="progress">
-    <div class="circle"></div><div class="circle"></div><div class="circle"></div><div class="circle"></div><div class="circle"></div>
-  </div>
-
-  <button class="btn" id="watchAd">🎬 Watch Ad</button>
-  <div class="gift" id="giftSection">
-    <p>🎁 Congratulations! You’ve unlocked your reward!</p>
-    <a id="giftLink" href="#" target="_blank">Get Gift</a>
-    <br><br>
-    <a href="https://t.me/gsf8mqOl0atkMTM0" target="_blank">📢 Join our Telegram Channel</a>
-  </div>
-
-  <!-- Monetag Script -->
-  <script src='//libtl.com/sdk.js' data-zone='10089898' data-sdk='show_10089898'></script>
-
-  <script>
-    let count = 0;
-    const circles = document.querySelectorAll('.circle');
-    const giftSection = document.getElementById('giftSection');
-    const giftLink = document.getElementById('giftLink');
-    const watchBtn = document.getElementById('watchAd');
-
-    async function getGiftLink() {
-      const res = await fetch('/gift.txt');
-      const text = await res.text();
-      giftLink.href = text.trim();
+<h2>🎥 Watch Ads to Unlock Your Gift</h2>
+<script src='//libtl.com/sdk.js' data-zone='10089898' data-sdk='show_10089898'></script>
+<button class="btn" onclick="show_10089898()">Watch Ad</button>
+<p>After 5 ads, your reward will unlock!</p>
+<a href="/gift" id="gift" style="display:none;">🎁 Claim Gift</a>
+<script>
+let count = 0;
+function show_10089898(){
+    count++;
+    if (count >= 5){
+        document.getElementById('gift').style.display='block';
     }
-
-    watchBtn.addEventListener('click', async () => {
-      if (typeof show_10089898 === "function") {
-        show_10089898();
-      } else {
-        alert("⏳ Please wait, ad still loading...");
-        return;
-      }
-
-      watchBtn.disabled = true;
-      watchBtn.textContent = "⏳ Watching Ad...";
-
-      // Simulate ad completion verification
-      setTimeout(async () => {
-        count++;
-        circles[count - 1].classList.add('active');
-        await fetch(`/verify_ad/${count}`, { method: "POST" });
-
-        if (count >= 5) {
-          await getGiftLink();
-          giftSection.style.display = "block";
-        }
-        watchBtn.disabled = false;
-        watchBtn.textContent = "🎬 Watch Ad";
-      }, 10000); // waits 10s to simulate ad view
-    });
-  </script>
+}
+</script>
 </body>
 </html>
 """
 
-# Flask app setup
-app = Flask(__name__)
+# Promo HTML
+PROMO_HTML = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Complete Tasks to Unlock Gift</title>
+<style>
+body { text-align: center; font-family: Arial; background: #f4f4f4; padding: 20px; }
+a { display:block; margin:10px auto; background:#4CAF50; color:#fff; padding:10px; border-radius:8px; width:80%; text-decoration:none; }
+</style>
+</head>
+<body>
+<h2>📢 Complete all tasks to unlock your gift</h2>
+{% for link in promo_links %}
+<a href="{{ link }}" target="_blank">Visit Task {{ loop.index }}</a>
+{% endfor %}
+<a href="{{ gift_link }}" style="display:block;margin-top:20px;background:#2196F3;">🎁 Claim Gift</a>
+</body>
+</html>
+"""
 
-@app.route("/gift.txt")
-def gift_file():
-    return get_gift_link()
+@app.route("/gift")
+def gift():
+    return f"<meta http-equiv='refresh' content='0;url={config['gift_link']}'>"
 
-@app.route("/user/<int:user_id>")
-def show_progress(user_id):
-    return render_template_string(HTML_PAGE)
-
-@app.route("/verify_ad/<int:count>", methods=["POST"])
-def verify_ad(count):
-    return "ok"
-
-# Telegram bot
+# === TELEGRAM BOT ===
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    ad_count[user_id] = 0
-    verified_users.discard(user_id)
-    web_url = f"{os.environ.get('RENDER_EXTERNAL_URL', 'http://localhost:5000')}/user/{user_id}"
-    keyboard = [[InlineKeyboardButton("🎬 Watch Ads", url=web_url)]]
-    await update.message.reply_text("Welcome! Watch ads to unlock your gift 🎁", reply_markup=InlineKeyboardMarkup(keyboard))
+    mode = config["mode"]
+    web_link = os.environ.get("RENDER_EXTERNAL_URL", "http://localhost:5000")
+    keyboard = [[InlineKeyboardButton("🎬 Open Ad Page", url=web_link)]]
+    await update.message.reply_text(
+        f"Welcome! 🎁\n\nCurrent mode: *{mode.upper()}*\n\n"
+        "Click below to start and unlock your reward.",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="Markdown"
+    )
 
-async def updategift(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.args:
-        await update.message.reply_text("Usage: /updategift <new_link>")
+# === ADMIN COMMANDS ===
+async def mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("❌ You’re not authorized.")
         return
-    new_link = context.args[0]
-    update_gift_link(new_link)
-    await update.message.reply_text(f"✅ Gift link updated to:\n{new_link}")
+    if not context.args:
+        await update.message.reply_text("Usage: /mode monetag or /mode promo")
+        return
+    new_mode = context.args[0].lower()
+    if new_mode not in ["monetag", "promo"]:
+        await update.message.reply_text("❌ Invalid mode. Choose 'monetag' or 'promo'.")
+        return
+    config["mode"] = new_mode
+    save_config(config)
+    await update.message.reply_text(f"✅ Mode changed to: {new_mode.upper()}")
 
+async def giftlink(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("❌ You’re not authorized.")
+        return
+    if not context.args:
+        await update.message.reply_text("Usage: /giftlink https://yourlink.com")
+        return
+    config["gift_link"] = context.args[0]
+    save_config(config)
+    await update.message.reply_text(f"🎁 Gift link updated to:\n{config['gift_link']}")
+
+async def promolinks(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("❌ You’re not authorized.")
+        return
+    if not context.args:
+        await update.message.reply_text("Usage: /promolinks link1 link2 link3 ...")
+        return
+    config["promo_links"] = context.args
+    save_config(config)
+    await update.message.reply_text(f"✅ Promo links updated:\n" + "\n".join(config["promo_links"]))
+
+# === APP RUN ===
 def run_flask():
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
 
 def main():
     threading.Thread(target=run_flask).start()
     bot = ApplicationBuilder().token(TOKEN).build()
     bot.add_handler(CommandHandler("start", start))
-    bot.add_handler(CommandHandler("updategift", updategift))
+    bot.add_handler(CommandHandler("mode", mode))
+    bot.add_handler(CommandHandler("giftlink", giftlink))
+    bot.add_handler(CommandHandler("promolinks", promolinks))
     bot.run_polling()
 
 if __name__ == "__main__":
