@@ -1,302 +1,190 @@
-# main.py
 import os
-import json
-import threading
-from flask import Flask, render_template_string, request, jsonify
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from flask import Flask, render_template_string
+import threading
 
-# ---------- CONFIG ----------
 TOKEN = "8103309728:AAH-lGTT6KXIb9Qu5pMnA1qgiKottnugoKw"
-ADMIN_ID = 5236441213  # your Telegram numeric ID
+JOIN_CHANNEL_LINK = "https://t.me/gsf8mqOl0atkMTM0"
+ADMIN_ID = 5236441213  # your Telegram ID
 
-CONFIG_FILE = "config.json"
-USER_FILE = "user_counts.json"
-
-DEFAULT_CONFIG = {
-    "mode": "monetag",  # "monetag" or "promo"
-    "gift_link": "https://www.canva.com/brand/join?token=BrnBqEuFTwf7IgNrKWfy4A&br",
-    "promo_link": "https://t.me/gsf8mqOl0atkMTM0",
-    "zone_id": "10089898"
-}
-
-# ---------- Helpers ----------
-def load_json(path, default):
+# -------------------- Gift Management --------------------
+def get_gift_link():
     try:
-        with open(path, "r") as f:
-            return json.load(f)
-    except Exception:
-        with open(path, "w") as f:
-            json.dump(default, f, indent=2)
-        return default
+        with open("gift.txt", "r") as f:
+            return f.read().strip()
+    except:
+        return "https://example.com"
 
-def save_json(path, obj):
-    with open(path, "w") as f:
-        json.dump(obj, f, indent=2)
+def update_gift_link(new_link):
+    with open("gift.txt", "w") as f:
+        f.write(new_link.strip())
 
-config = load_json(CONFIG_FILE, DEFAULT_CONFIG)
-user_counts = load_json(USER_FILE, {})  # { "<user_id>": {"count": n} }
+# -------------------- Tracking --------------------
+ad_count = {}
+verified_users = set()
 
-def get_count(uid):
-    return user_counts.get(str(uid), {}).get("count", 0)
-
-def increment_count(uid):
-    key = str(uid)
-    rec = user_counts.get(key, {"count":0})
-    rec["count"] = rec.get("count", 0) + 1
-    user_counts[key] = rec
-    save_json(USER_FILE, user_counts)
-    return rec["count"]
-
-def reset_count(uid):
-    key = str(uid)
-    user_counts[key] = {"count": 0}
-    save_json(USER_FILE, user_counts)
-
-# ---------- Flask app (serves user pages) ----------
-app = Flask(__name__)
-
-# HTML template uses either Monetag or Promo depending on config["mode"]
-PAGE_TEMPLATE = """
-<!doctype html>
-<html>
+# -------------------- HTML --------------------
+HTML_PAGE = """
+<!DOCTYPE html>
+<html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Watch Ads</title>
-<style>
-  body{font-family:Segoe UI,Arial;background:#0b0b0b;color:#fff;display:flex;flex-direction:column;align-items:center;min-height:100vh;padding:24px}
-  .container{max-width:420px;width:100%;background:#121217;border-radius:12px;padding:20px}
-  h2{color:#fff;margin:6px 0 14px}
-  .steps{display:flex;gap:8px;justify-content:center;margin-bottom:14px}
-  .step{width:48px;height:36px;border-radius:10px;background:#333;display:flex;align-items:center;justify-content:center;font-weight:700}
-  .step.done{background:linear-gradient(90deg,#f04,#6f4cff);box-shadow:0 8px 24px rgba(0,0,0,0.6);transform:translateY(-6px)}
-  .btn{display:inline-block;padding:12px 18px;border-radius:10px;background:#6b00ff;color:#fff;text-decoration:none;font-weight:800;margin:6px 0;cursor:pointer}
-  .btn disabled{opacity:.5;cursor:default}
-  .gift{display:none;margin-top:12px}
-  .gift a{display:inline-block;padding:10px 14px;background:#0abf7b;border-radius:10px;color:#fff;text-decoration:none;font-weight:800}
-  .info{color:#cfd8dc;font-size:14px;margin-top:10px}
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Watch Ads to Unlock Gift</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #0f0f0f;
+      color: #fff;
+      text-align: center;
+      padding: 30px;
+    }
+    h2 { color: #FFD700; }
+    .progress {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin: 20px 0;
+    }
+    .circle {
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      background-color: #333;
+    }
+    .circle.active { background-color: #00FF88; }
+    .btn {
+      background: #6200ea;
+      color: #fff;
+      border: none;
+      padding: 14px 26px;
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: 18px;
+      transition: 0.3s;
+    }
+    .btn:hover { background: #7b1ffa; }
+    .gift { display: none; margin-top: 20px; }
+    .gift a {
+      background: #2196F3;
+      color: #fff;
+      padding: 10px 20px;
+      border-radius: 8px;
+      text-decoration: none;
+    }
+  </style>
 </head>
 <body>
-  <div class="container">
-    <h2>🎬 Watch Ads / Complete Tasks</h2>
-
-    <div class="steps" id="steps">
-      {% for i in range(1,6) %}
-        <div class="step {% if i <= count %}done{% endif %}" id="s{{i}}">{{ i }}</div>
-      {% endfor %}
-    </div>
-
-    <div style="text-align:center;">
-      {% if mode == 'monetag' %}
-        <p class="info">Tap the button to open a Monetag ad. Wait until it finishes.</p>
-        <button class="btn" id="watchBtn">▶ Watch Ad</button>
-      {% else %}
-        <p class="info">Tap the button to open the promo link. Close it and return here to confirm.</p>
-        <a class="btn" id="promoBtn" href="{{ promo_link }}" target="_blank">👉 Open Promo Link</a>
-      {% endif %}
-    </div>
-
-    <div class="gift" id="gift">
-      <p style="margin:10px 0">🎁 Your reward is ready:</p>
-      <a href="{{ gift_link }}" target="_blank">Open Gift</a>
-      <div style="margin-top:10px"><a href="{{ join_channel }}" target="_blank" class="btn">📢 Join Channel</a></div>
-    </div>
-
-    <p class="info">Progress: <span id="countText">{{ count }}</span>/5</p>
+  <h2>🎥 Watch 5 Ads to Unlock Your Gift!</h2>
+  <div class="progress" id="progress">
+    <div class="circle"></div><div class="circle"></div><div class="circle"></div><div class="circle"></div><div class="circle"></div>
   </div>
 
-<!-- Monetag if mode == monetag -->
-{% if mode == 'monetag' %}
-<script src='//libtl.com/sdk.js' data-zone='{{ zone_id }}' data-sdk='show_{{ zone_id }}'></script>
-{% endif %}
+  <button class="btn" id="watchAd">🎬 Watch Ad</button>
+  <div class="gift" id="giftSection">
+    <p>🎁 Congratulations! You’ve unlocked your reward!</p>
+    <a id="giftLink" href="#" target="_blank">Get Gift</a>
+    <br><br>
+    <a href="https://t.me/gsf8mqOl0atkMTM0" target="_blank">📢 Join our Telegram Channel</a>
+  </div>
 
-<script>
-  const uid = {{ user_id }};
-  let count = {{ count }};
-  const required = 5;
+  <!-- Monetag Script -->
+  <script src='//libtl.com/sdk.js' data-zone='10089898' data-sdk='show_10089898'></script>
 
-  function updateUI(c){
-    count = c;
-    document.getElementById('countText').innerText = count;
-    for(let i=1;i<=5;i++){
-      const el = document.getElementById('s'+i);
-      if(i <= count) el.classList.add('done'); else el.classList.remove('done');
+  <script>
+    let count = 0;
+    const circles = document.querySelectorAll('.circle');
+    const giftSection = document.getElementById('giftSection');
+    const giftLink = document.getElementById('giftLink');
+    const watchBtn = document.getElementById('watchAd');
+
+    async function getGiftLink() {
+      const res = await fetch('/gift.txt');
+      const text = await res.text();
+      giftLink.href = text.trim();
     }
-    if(count >= required){
-      document.getElementById('gift').style.display = 'block';
-    }
-  }
-
-  async function confirmToServer(){
-    // call server to increment only when an ad/promo is actually completed
-    const resp = await fetch('/ad_complete/' + uid, { method:'POST' });
-    const j = await resp.json();
-    if(j.status === 'ok') updateUI(j.count);
-    else alert('Server error');
-  }
-
-  // Monetag mode: ensure SDK ready before enabling
-  const watchBtn = document.getElementById('watchBtn');
-  if(watchBtn){
-    watchBtn.disabled = true;
-    watchBtn.innerText = 'Loading ad...';
-    // allow some time for SDK to load
-    setTimeout(()=> {
-      // if function available, enable button
-      if(typeof window['show_{{ zone_id }}'] === 'function'){
-        watchBtn.disabled = false;
-        watchBtn.innerText = '▶ Watch Ad';
-      } else {
-        // still enable but show message
-        watchBtn.disabled = false;
-        watchBtn.innerText = '▶ Watch Ad';
-      }
-    }, 2500);
 
     watchBtn.addEventListener('click', async () => {
-      watchBtn.disabled = true;
-      watchBtn.innerText = 'Opening ad...';
-      try {
-        if(typeof window['show_{{ zone_id }}'] === 'function'){
-          // call Monetag SDK and rely on user to close ad when done
-          window['show_{{ zone_id }}']();
-          // Wait a little, then confirm (best-effort)
-          setTimeout(confirmToServer, 6000); // confirm after 6s — configurable
-        } else {
-          // fallback: open a new tab to Monetag zone (best-effort)
-          window.open('https://libtl.com/zone/{{ zone_id }}','_blank');
-          setTimeout(confirmToServer, 6000);
-        }
-      } catch(err){
-        console.error(err);
-        alert('Ad failed to open. Try again.');
-      } finally {
-        watchBtn.disabled = false;
-        watchBtn.innerText = '▶ Watch Ad';
+      if (typeof show_10089898 === "function") {
+        show_10089898();
+      } else {
+        alert("⏳ Please wait, ad still loading...");
+        return;
       }
-    });
-  }
 
-  // Promo mode: user opens external link; we offer a "I returned" confirm click
-  const promoBtn = document.getElementById('promoBtn');
-  if(promoBtn){
-    // add a small confirm button under promoBtn
-    const confirmBtn = document.createElement('button');
-    confirmBtn.className = 'btn';
-    confirmBtn.style.display = 'block';
-    confirmBtn.style.margin = '12px auto';
-    confirmBtn.innerText = '✅ I returned — Confirm';
-    confirmBtn.onclick = confirmToServer;
-    promoBtn.parentNode.insertBefore(confirmBtn, promoBtn.nextSibling);
-  }
-</script>
+      watchBtn.disabled = true;
+      watchBtn.textContent = "⏳ Watching Ad...";
+
+      setTimeout(async () => {
+        count++;
+        circles[count - 1].classList.add('active');
+        await fetch(`/verify_ad/${count}`, { method: "POST" });
+
+        if (count >= 5) {
+          await getGiftLink();
+          giftSection.style.display = "block";
+        }
+        watchBtn.disabled = false;
+        watchBtn.textContent = "🎬 Watch Ad";
+      }, 10000);
+    });
+  </script>
 </body>
 </html>
 """
 
+# -------------------- Flask Setup --------------------
+app = Flask(__name__)
+
+@app.route("/")
+def home():
+    return "✅ Telegram Ad Bot is running successfully."
+
+@app.route("/gift.txt")
+def gift_file():
+    return get_gift_link()
+
 @app.route("/user/<int:user_id>")
-def user_page(user_id):
-    # render template with current count and config
-    cnt = get_count(user_id)
-    rendered = render_template_string(
-        PAGE_TEMPLATE,
-        user_id=user_id,
-        count=cnt,
-        mode=config.get("mode", "monetag"),
-        gift_link=config.get("gift_link"),
-        promo_link=config.get("promo_link"),
-        zone_id=config.get("zone_id"),
-        join_channel=config.get("promo_link")
-    )
-    return rendered
+def show_progress(user_id):
+    return render_template_string(HTML_PAGE)
 
-# Endpoint called by the page when an ad/promo is completed (client requests this)
-@app.route("/ad_complete/<int:user_id>", methods=["POST"])
-def ad_complete(user_id):
-    newcount = increment_count(user_id)
-    unlocked = newcount >= 5
-    return jsonify({"status":"ok","count": newcount, "unlocked": unlocked})
+@app.route("/verify_ad/<int:count>", methods=["POST"])
+def verify_ad(count):
+    return "ok"
 
-@app.route("/gift")  # redirect to gift
-def gift_redirect():
-    return ("", 302, {"Location": config.get("gift_link")})
-
-# ---------- Telegram Bot Handlers ----------
+# -------------------- Telegram Commands --------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    reset_count(user_id)
-    web = os.environ.get("RENDER_EXTERNAL_URL", f"http://localhost:{os.environ.get('PORT',5000)}")
-    url = f"{web}/user/{user_id}"
-    keyboard = [[InlineKeyboardButton("🎬 Open Ad / Promo Page", url=url)]]
-    await update.message.reply_text("Welcome! Open the page below and follow the steps to unlock your gift.", reply_markup=InlineKeyboardMarkup(keyboard))
+    ad_count[user_id] = 0
+    verified_users.discard(user_id)
+    web_url = f"{os.environ.get('RENDER_EXTERNAL_URL', 'http://localhost:5000')}/user/{user_id}"
+    keyboard = [[InlineKeyboardButton("🎬 Watch Ads", url=web_url)]]
+    await update.message.reply_text("Welcome! Watch ads to unlock your gift 🎁", reply_markup=InlineKeyboardMarkup(keyboard))
 
-async def setadmode(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def updategift(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
-        await update.message.reply_text("❌ Not authorized.")
+        await update.message.reply_text("❌ You are not authorized to perform this action.")
         return
+
     if not context.args:
-        await update.message.reply_text("Usage: /setadmode monetag  OR  /setadmode promo")
+        await update.message.reply_text("Usage: /updategift <new_link>")
         return
-    m = context.args[0].lower()
-    if m not in ("monetag","promo"):
-        await update.message.reply_text("Mode must be 'monetag' or 'promo'.")
-        return
-    config["mode"] = m
-    save_json(CONFIG_FILE, config)
-    await update.message.reply_text(f"✅ Mode set to: {m}")
 
-async def setgift(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
-        await update.message.reply_text("❌ Not authorized.")
-        return
-    if not context.args:
-        await update.message.reply_text("Usage: /setgift https://example.com")
-        return
-    link = context.args[0]
-    config["gift_link"] = link
-    save_json(CONFIG_FILE, config)
-    await update.message.reply_text(f"✅ Gift link updated:\n{link}")
+    new_link = context.args[0]
+    update_gift_link(new_link)
+    await update.message.reply_text(f"✅ Gift link updated to:\n{new_link}")
 
-async def setpromo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
-        await update.message.reply_text("❌ Not authorized.")
-        return
-    if not context.args:
-        await update.message.reply_text("Usage: /setpromo https://example.com")
-        return
-    link = context.args[0]
-    config["promo_link"] = link
-    save_json(CONFIG_FILE, config)
-    await update.message.reply_text(f"✅ Promo link updated:\n{link}")
-
-async def getmode(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(f"Current mode: {config.get('mode')}")
-
-async def getgift(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(f"Gift link: {config.get('gift_link')}")
-
-# ---------- Run Flask and Bot ----------
+# -------------------- Run Both Flask & Bot --------------------
 def run_flask():
-    port = int(os.environ.get("PORT", 5000))
-    # bind to provided port
-    app.run(host="0.0.0.0", port=port)
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
 
 def main():
-    # start flask in a thread so Render sees an open port
     threading.Thread(target=run_flask).start()
-
-    application = ApplicationBuilder().token(TOKEN).build()
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("setadmode", setadmode))
-    application.add_handler(CommandHandler("setgift", setgift))
-    application.add_handler(CommandHandler("setpromo", setpromo))
-    application.add_handler(CommandHandler("getmode", getmode))
-    application.add_handler(CommandHandler("getgift", getgift))
-
-    application.run_polling()
+    bot = ApplicationBuilder().token(TOKEN).build()
+    bot.add_handler(CommandHandler("start", start))
+    bot.add_handler(CommandHandler("updategift", updategift))
+    bot.run_polling()
 
 if __name__ == "__main__":
     main()
-    
