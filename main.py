@@ -7,7 +7,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandle
 
 # === CONFIG ===
 TOKEN = "8103309728:AAH-lGTT6KXIb9Qu5pMnA1qgiKottnugoKw"
-ADMIN_ID = 590000000  # replace with your Telegram numeric ID
+ADMIN_ID = 5236441213  # replace with your Telegram numeric ID
 
 CONFIG_FILE = "bot_config.json"
 
