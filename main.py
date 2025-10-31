@@ -19,31 +19,108 @@ ad_count = {}  # user_id: count
 
 HTML_PAGE = """
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<title>Watch Ads</title>
-<style>
-body { font-family: Arial; text-align: center; background-color: #f9f9f9; padding: 30px; }
-.tab { display: inline-block; width: 35px; height: 35px; margin: 5px; border-radius: 50%; background: #ccc; }
-.active { background: #4CAF50; }
-.btn { display: inline-block; background: #0088cc; color: white; padding: 10px 20px; margin-top: 20px;
-       text-decoration: none; border-radius: 8px; font-weight: bold; }
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Watch Ads to Unlock Gift</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f4f4f4;
+            text-align: center;
+            padding: 20px;
+        }
+        .progress {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin: 20px 0;
+        }
+        .circle {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            background-color: #ddd;
+        }
+        .circle.active {
+            background-color: #4CAF50;
+        }
+        .btn {
+            background: #4CAF50;
+            color: #fff;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        .gift {
+            display: none;
+            margin-top: 20px;
+        }
+        .gift a {
+            background: #2196F3;
+            color: #fff;
+            padding: 10px 20px;
+            border-radius: 8px;
+            text-decoration: none;
+        }
+    </style>
 </head>
 <body>
-<h2>🎁 Watch Ads to Unlock Gift</h2>
-<div>
-  {% for i in range(1,6) %}
-    <div class="tab {% if i <= count %}active{% endif %}"></div>
-  {% endfor %}
-</div>
-{% if count < 5 %}
-  <p>Watch {{ 5 - count }} more ads to unlock your gift.</p>
-  <a href="/watch/{{ user_id }}" class="btn">🎬 Watch Ad</a>
-{% else %}
-  <a href="{{ gift_url }}" class="btn">🎁 Access Gift</a>
-  <a href="{{ join_url }}" class="btn" style="background: #25D366;">📢 Join Channel</a>
-{% endif %}
+
+    <h2>🎥 Watch 5 Ads to Unlock Your Gift!</h2>
+    <div class="progress" id="progress">
+        <div class="circle"></div>
+        <div class="circle"></div>
+        <div class="circle"></div>
+        <div class="circle"></div>
+        <div class="circle"></div>
+    </div>
+
+    <button class="btn" id="watchAd">Watch Ad</button>
+    <div class="gift" id="giftSection">
+        <p>🎁 Congratulations! You’ve unlocked your reward!</p>
+        <a id="giftLink" href="#" target="_blank">Get Gift</a>
+        <br><br>
+        <a href="https://t.me/gsf8mqOl0atkMTM0" target="_blank">📢 Join our Telegram Channel</a>
+    </div>
+
+    <!-- Monetag Ad Script -->
+    <script src='//libtl.com/sdk.js' data-zone='10089898' data-sdk='show_10089898'></script>
+
+    <script>
+        let count = 0;
+        const circles = document.querySelectorAll('.circle');
+        const giftSection = document.getElementById('giftSection');
+        const giftLink = document.getElementById('giftLink');
+
+        // This loads the gift URL dynamically from gift.txt on your server
+        async function getGiftLink() {
+            const response = await fetch('/gift.txt');
+            const link = await response.text();
+            giftLink.href = link.trim();
+        }
+
+        document.getElementById('watchAd').addEventListener('click', async () => {
+            // Show Monetag Ad
+            if (typeof show_10089898 === "function") {
+                show_10089898();
+            } else {
+                alert("Ad is loading... please wait a few seconds and try again.");
+                return;
+            }
+
+            count++;
+            circles[count - 1].classList.add('active');
+
+            if (count >= 5) {
+                await getGiftLink();
+                giftSection.style.display = 'block';
+            }
+        });
+    </script>
 </body>
 </html>
 """
