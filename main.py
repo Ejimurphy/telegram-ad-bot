@@ -4,7 +4,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandle
 from flask import Flask, render_template_string
 import threading
 
-TOKEN = "YOUR_BOT_TOKEN_HERE"
+TOKEN = "8103309728:AAH-lGTT6KXIb9Qu5pMnA1qgiKottnugoKw"
 
 # Read gift link from gift.txt
 def get_gift_link():
