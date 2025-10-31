@@ -6,7 +6,7 @@ import threading
 
 TOKEN = "8103309728:AAH-lGTT6KXIb9Qu5pMnA1qgiKottnugoKw"
 JOIN_CHANNEL_LINK = "https://t.me/gsf8mqOl0atkMTM0"
-ADMIN_ID = 5236441213  # your Telegram ID
+ADMIN_ID = 5236441213  # Sunday Kehinde Akinade (Your Telegram user ID)
 
 # -------------------- Gift Management --------------------
 def get_gift_link():
