@@ -190,12 +190,58 @@ async def updategift(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def run_flask():
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
 
+import logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Optional: Admin ID for secure commands
+ADMIN_ID = 5236441213  # your Telegram ID
+
+# Update gift link (admin only)
+async def updategift(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("🚫 You don’t have permission to use this command.")
+        return
+
+    if not context.args:
+        await update.message.reply_text("Usage: /updategift <new_link>")
+        return
+
+    new_link = context.args[0]
+    with open("gift.txt", "w") as f:
+        f.write(new_link.strip())
+    await update.message.reply_text(f"✅ Gift link updated to:\n{new_link}")
+
+# Check current mode (admin only, optional)
+async def currentmode(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("🚫 Admins only.")
+        return
+
+    await update.message.reply_text("🧭 Current mode: monetag")
+
+# Log all incoming messages (debug)
+async def echo_logger(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    logger.info(f"Incoming message from {user.username} ({user.id}): {update.message.text}")
+
 def main():
-    threading.Thread(target=run_flask).start()
-    bot = ApplicationBuilder().token(TOKEN).build()
-    bot.add_handler(CommandHandler("start", start))
-    bot.add_handler(CommandHandler("updategift", updategift))
-    bot.run_polling()
+    threading.Thread(target=run_flask, daemon=True).start()
+    logger.info("Flask server started in background thread.")
+    application = ApplicationBuilder().token(TOKEN).build()
+
+    # Register commands
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("updategift", updategift))
+    application.add_handler(CommandHandler("currentmode", currentmode))
+
+    # Log any message
+    application.add_handler(CommandHandler("echo", echo_logger))
+
+    logger.info("Handlers registered. Starting polling...")
+    application.run_polling()
+    logger.info("Polling stopped.")
 
 if __name__ == "__main__":
     main()
+                      
