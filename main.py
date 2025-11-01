@@ -1,15 +1,15 @@
 import os
 import logging
-import threading
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 from flask import Flask, render_template_string, request
 from markupsafe import Markup
+import threading
 
 # -------------------- Configuration --------------------
 TOKEN = "8103309728:AAGKsck7UMUmfjucRRNoEcc3YFazhvz_u3I"
 JOIN_CHANNEL_LINK = "https://t.me/gsf8mqOl0atkMTM0"
-ADMIN_ID = 5236441213  # Sunday Kehinde Akinade
+ADMIN_ID = 5236441213
 
 # -------------------- Logging --------------------
 logging.basicConfig(level=logging.INFO)
@@ -22,27 +22,21 @@ GIFT_FILE = "gift.txt"
 
 # -------------------- Helpers --------------------
 def get_gift_link():
-    if os.path.exists(GIFT_FILE):
-        return open(GIFT_FILE).read().strip()
-    return "https://fonpay.com.ng"
+    return open(GIFT_FILE).read().strip() if os.path.exists(GIFT_FILE) else "https://fonpay.com.ng"
 
 def update_gift_link(new_link):
     with open(GIFT_FILE, "w") as f:
         f.write(new_link.strip())
 
 def get_mode():
-    if os.path.exists(MODE_FILE):
-        return open(MODE_FILE).read().strip()
-    return "monetag"
+    return open(MODE_FILE).read().strip() if os.path.exists(MODE_FILE) else "monetag"
 
 def set_mode(mode):
     with open(MODE_FILE, "w") as f:
         f.write(mode.strip())
 
 def get_promo_link():
-    if os.path.exists(PROMO_FILE):
-        return open(PROMO_FILE).read().strip()
-    return "https://fonpay.com.ng"
+    return open(PROMO_FILE).read().strip() if os.path.exists(PROMO_FILE) else "https://fonpay.com.ng"
 
 def update_promo_link(new_link):
     with open(PROMO_FILE, "w") as f:
@@ -62,11 +56,11 @@ HTML_PAGE = """
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Watch Ads</title>
 <style>
-  body{font-family:Arial,Helvetica,sans-serif;text-align:center;padding:24px;background:#f9f9f9}
-  .btn{padding:12px 20px;border-radius:8px;border:none;background:#0088cc;color:#fff;font-size:16px;margin:8px;cursor:pointer}
+  body{font-family:Arial;text-align:center;padding:20px;background:#f9f9f9}
+  .btn{padding:12px 20px;border-radius:8px;border:none;background:#0088cc;color:white;font-size:16px;margin:8px;cursor:pointer}
   .btn:disabled{opacity:0.6;cursor:not-allowed}
   .complete{background:#28a745}
-  .steps{display:flex;gap:8px;justify-content:center;margin:12px 0}
+  .steps{display:flex;gap:8px;justify-content:center;margin:10px 0}
   .step{width:36px;height:36px;border-radius:50%;background:#ddd;display:flex;align-items:center;justify-content:center;font-weight:700}
   .step.done{background:linear-gradient(90deg,#6f4cff,#f04);color:#fff;transform:translateY(-4px)}
 </style>
@@ -80,14 +74,11 @@ HTML_PAGE = """
     {% endfor %}
   </div>
   <div id="actionArea">{{buttons}}</div>
-
 <script>
 function makeVerify(user, idx){
   fetch(`/verify_ad/${user}/${idx}`, { method: "POST" })
-    .then(r => r.text())
-    .then(t => {
-      setTimeout(()=> location.reload(), 800);
-    }).catch(console.error);
+    .then(() => setTimeout(()=> location.reload(), 800))
+    .catch(console.error);
 }
 </script>
 </body>
@@ -111,14 +102,12 @@ def show_progress(user_id):
     buttons_html = ""
     if user_progress < total_ads:
         next_idx = user_progress + 1
-
         if current_mode == "monetag":
             buttons_html = f"""
             <div>
-              <script src='//libtl.com/sdk.js' data-zone='10089898' data-sdk='show_10089898'></script>
-              <button class="btn" onclick="show_10089898().then(() => {{
+              <script src='//otieu.com/sdk.js' data-zone='10060305' data-sdk='show_10060305'></script>
+              <button class="btn" onclick="show_10060305().then(() => {{
                   fetch('/verify_ad/{user_id}/{next_idx}', {{ method: 'POST' }})
-                      .then(r => r.text())
                       .then(() => setTimeout(() => location.reload(), 800))
                       .catch(console.error);
               }})">▶ Watch Ad {next_idx}</button>
@@ -127,9 +116,7 @@ def show_progress(user_id):
         else:
             buttons_html = f"""
             <div>
-              <a href="{promo_link}" target="_blank">
-                <button class="btn">▶ Open Promo Link</button>
-              </a>
+              <a href="{promo_link}" target="_blank"><button class="btn">▶ Open Promo Link</button></a>
               <button class="btn" onclick="makeVerify({user_id},{next_idx})">✅ Confirm Visit {next_idx}</button>
             </div>
             """
@@ -137,12 +124,9 @@ def show_progress(user_id):
         gift_link = get_gift_link()
         buttons_html = f"""
         <div>
-          <a href="{gift_link}" target="_blank">
-            <button class="btn complete">🎁 Claim Your Gift</button>
-          </a>
+          <a href="{gift_link}" target="_blank"><button class="btn complete">🎁 Claim Your Gift</button></a>
         </div>
         """
-
     return render_template_string(HTML_PAGE, watched=user_progress, buttons=Markup(buttons_html))
 
 @app.route("/verify_ad/<int:user_id>/<int:count>", methods=["POST"])
@@ -229,7 +213,7 @@ async def setpromo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         return await update.message.reply_text("Usage: /setpromo <link>")
     update_promo_link(context.args[0])
-    await update.message.reply_text(f"✅ Promo link updated.")
+    await update.message.reply_text("✅ Promo link updated.")
 
 async def currentmode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"🧭 Current Mode: {get_mode()}")
@@ -237,5 +221,28 @@ async def currentmode(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         return await update.message.reply_text("🚫 Admin only.")
-    msg = f"📊 Users: {len(user_list)} | Completed: {len(verified
-    
+    msg = f"📊 Users: {len(user_list)} | Completed: {len(verified_users)}"
+    await update.message.reply_text(msg)
+
+# -------------------- Run Flask + Telegram --------------------
+def run_flask():
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
+
+def run_bot():
+    app_bot = ApplicationBuilder().token(TOKEN).build()
+    app_bot.add_handler(CommandHandler("start", start))
+    app_bot.add_handler(CommandHandler("updategift", updategift))
+    app_bot.add_handler(CommandHandler("getgift", getgift))
+    app_bot.add_handler(CommandHandler("resetads", resetads))
+    app_bot.add_handler(CommandHandler("broadcast", broadcast))
+    app_bot.add_handler(CommandHandler("setmode", setmode))
+    app_bot.add_handler(CommandHandler("switchmode", switchmode))
+    app_bot.add_handler(CommandHandler("setpromo", setpromo))
+    app_bot.add_handler(CommandHandler("currentmode", currentmode))
+    app_bot.add_handler(CommandHandler("status", status))
+    app_bot.run_polling()
+
+if __name__ == "__main__":
+    threading.Thread(target=run_flask).start()
+    run_bot()
