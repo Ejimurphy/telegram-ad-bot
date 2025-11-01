@@ -3,11 +3,11 @@ import logging
 import threading
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
-from flask import Flask, render_template_string
+from flask import Flask, render_template_string, request
 
 TOKEN = "8103309728:AAGKsck7UMUmfjucRRNoEcc3YFazhvz_u3I"
 JOIN_CHANNEL_LINK = "https://t.me/gsf8mqOl0atkMTM0"
-ADMIN_ID = 5236441213  # Sunday Kehinde Akinade (Your Telegram user ID)
+ADMIN_ID = 5236441213  # Sunday Kehinde Akinade
 
 # -------------------- Logging --------------------
 logging.basicConfig(level=logging.INFO)
@@ -54,21 +54,24 @@ verified_users = set()
 user_list = set()  # for broadcast
 
 # -------------------- HTML Template --------------------
-HTML_PAGE = """<!DOCTYPE html>
+HTML_PAGE = """
+<!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Watch Ads</title>
-    <style>
-        body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; }
-        .btn { padding: 10px 20px; font-size: 16px; background: #0088cc; color: white; border: none; border-radius: 5px; }
-        .btn:hover { background: #005f8a; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Watch Ads</title>
+<style>
+    body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; background: #f9f9f9; }
+    .btn { padding: 12px 24px; font-size: 18px; background: #0088cc; color: white; border: none; border-radius: 5px; margin: 10px; }
+    .btn:hover { background: #005f8a; cursor: pointer; }
+    .complete { background: #4CAF50; }
+</style>
 </head>
 <body>
     <h2>🎬 Watch Ads to Unlock Your Gift</h2>
-    <!-- Dynamic Ad Section -->
+    <p>You have watched <b>{{watched}}</b> out of <b>5</b> ads.</p>
+    {{buttons}}
 </body>
 </html>
 """
@@ -86,21 +89,56 @@ def gift_file():
 
 @app.route("/user/<int:user_id>")
 def show_progress(user_id):
-    # Get current mode and promo link
     current_mode = get_mode()
     promo_link = get_promo_link()
+    user_progress = ad_count.get(user_id, 0)
 
-    # Dynamic switch between Monetag and Promo modes
-    if current_mode == "monetag":
-        ad_section = "<script src='//libtl.com/sdk.js' data-zone='10089898' data-sdk='show_10089898'></script>"
+    buttons_html = ""
+    total_ads = 5
+
+    # Generate ad buttons or gift button
+    if user_progress < total_ads:
+        for i in range(user_progress + 1, total_ads + 1):
+            if current_mode == "monetag":
+                buttons_html += f"""
+                <div>
+                    <button class='btn' onclick="window.open('//libtl.com/sdk.js?zone=10089898', '_blank'); verifyAd({user_id}, {i})">
+                        🎯 Watch Ad {i}
+                    </button>
+                </div>
+                """
+            else:
+                buttons_html += f"""
+                <div>
+                    <a href='{promo_link}' target='_blank'>
+                        <button class='btn' onclick="verifyAd({user_id}, {i})">🎯 View Promo {i}</button>
+                    </a>
+                </div>
+                """
     else:
-        ad_section = f"<a href='{promo_link}' target='_blank'><button class='btn'>🎯 View Promo</button></a>"
+        gift_link = get_gift_link()
+        buttons_html = f"<a href='{gift_link}'><button class='btn complete'>🎁 Claim Your Gift</button></a>"
 
-    html = HTML_PAGE.replace("<!-- Dynamic Ad Section -->", ad_section)
-    return render_template_string(html)
+    # Inject JS to verify clicks
+    buttons_html += """
+    <script>
+    function verifyAd(user, count) {
+        fetch(`/verify_ad/${user}/${count}`, { method: "POST" })
+            .then(r => console.log("Ad verified for user " + user + " ad #" + count))
+            .catch(e => console.error(e));
+    }
+    </script>
+    """
 
-@app.route("/verify_ad/<int:count>", methods=["POST"])
-def verify_ad(count):
+    html = render_template_string(HTML_PAGE, watched=user_progress, buttons=buttons_html)
+    return html
+
+@app.route("/verify_ad/<int:user_id>/<int:count>", methods=["POST"])
+def verify_ad(user_id, count):
+    if user_id not in ad_count:
+        ad_count[user_id] = 0
+    ad_count[user_id] += 1
+    logger.info(f"User {user_id} watched ad #{count}. Total: {ad_count[user_id]}")
     return "ok"
 
 # -------------------- Telegram Commands --------------------
@@ -115,7 +153,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             url=f"{os.environ.get('RENDER_EXTERNAL_URL','http://localhost:5000')}/user/{user_id}")
     ]]
     await update.message.reply_text(
-        f"Welcome! Current Mode: *{current_mode}*\nWatch ads to unlock your gift 🎁",
+        f"Welcome! Current Mode: *{current_mode}*\n\nWatch 5 ads to unlock your gift 🎁",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown"
     )
@@ -213,4 +251,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
