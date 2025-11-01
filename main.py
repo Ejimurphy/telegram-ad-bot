@@ -4,7 +4,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 from flask import Flask, render_template_string
 import threading
 
-TOKEN = "8103309728:AAH-lGTT6KXIb9Qu5pMnA1qgiKottnugoKw"
+TOKEN = "8103309728:AAGKsck7UMUmfjucRRNoEcc3YFazhvz_u3I"
 JOIN_CHANNEL_LINK = "https://t.me/gsf8mqOl0atkMTM0"
 ADMIN_ID = 5236441213  # Sunday Kehinde Akinade (Your Telegram user ID)
 
