@@ -1,7 +1,6 @@
 import os
 import logging
 import threading
-import time
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 from flask import Flask, render_template_string, request
@@ -22,9 +21,9 @@ PROMO_FILE = "promo.txt"
 GIFT_FILE = "gift.txt"
 
 # -------------------- STORAGE --------------------
-ad_count = {}            # { user_id: ads_watched }
-verified_users = set()   # users who finished all 5 ads
-user_list = set()        # track all users
+ad_count = {}
+verified_users = set()
+user_list = set()
 
 # -------------------- MODE MANAGEMENT --------------------
 def get_mode():
@@ -90,19 +89,19 @@ function showNextAd() {
   if (current >= 5) return;
   current++;
   fetch(`/verify_ad/{{user_id}}/${current}`, { method: "POST" })
-    .then(r => r.text())
-    .then(t => {
+    .then(() => {
       if (current < 5) {
-        setTimeout(()=> location.reload(), 1000);
-      } else {
         setTimeout(()=> location.reload(), 800);
+      } else {
+        setTimeout(()=> location.reload(), 600);
       }
-    }).catch(console.error);
+    })
+    .catch(console.error);
 }
 setTimeout(()=>{
   if (current < 5) {
     document.getElementById('openAd').click();
-    setTimeout(showNextAd, 10000); // 10s delay before verify
+    setTimeout(showNextAd, 10000);
   }
 }, 1000);
 </script>
@@ -128,6 +127,7 @@ def user_page(user_id):
     if watched >= total:
         buttons_html = f'<a href="{gift}" target="_blank"><button class="btn complete">🎁 Claim Your Gift</button></a>'
     else:
+        # ✅ FIXED Monetag ads always use valid link
         ad_link = "https://libtl.com/zone/10089898" if mode == "monetag" else promo
         buttons_html = f'<button id="openAd" class="btn" onclick="window.open(\'{ad_link}\', \'_blank\')">▶ Watch Ad {watched+1}</button>'
 
@@ -143,7 +143,7 @@ def verify_ad(user_id, count):
         logger.info(f"User {user_id} watched ad {count}/5")
     return "ok"
 
-# -------------------- TELEGRAM --------------------
+# -------------------- TELEGRAM BOT --------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     ad_count.setdefault(user_id, 0)
@@ -200,7 +200,7 @@ async def setmode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if mode not in ["monetag", "promo"]:
         return await update.message.reply_text("Invalid mode.")
     set_mode(mode)
-    ad_count.clear()  # reset progress to avoid confusion
+    ad_count.clear()
     await update.message.reply_text(f"✅ Mode set to {mode}")
 
 async def switchmode(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -226,10 +226,7 @@ async def currentmode(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         return
-    msg = (
-        f"📊 Status:\nUsers: {len(user_list)}\n"
-        f"Completed: {len(verified_users)}"
-    )
+    msg = f"📊 Status:\nUsers: {len(user_list)}\nCompleted: {len(verified_users)}"
     await update.message.reply_text(msg)
 
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
