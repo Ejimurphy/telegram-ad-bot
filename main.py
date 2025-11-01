@@ -21,9 +21,9 @@ PROMO_FILE = "promo.txt"
 GIFT_FILE = "gift.txt"
 
 # -------------------- STORAGE --------------------
-ad_count = {}
-verified_users = set()
-user_list = set()
+ad_count = {}            # { user_id: ads_watched }
+verified_users = set()   # users who finished all 5 ads
+user_list = set()        # track all users
 
 # -------------------- MODE MANAGEMENT --------------------
 def get_mode():
@@ -89,25 +89,19 @@ function showNextAd() {
   if (current >= 5) return;
   current++;
   fetch(`/verify_ad/{{user_id}}/${current}`, { method: "POST" })
-    .then(() => {
+    .then(r => r.text())
+    .then(t => {
       if (current < 5) {
-        setTimeout(()=> location.reload(), 800);
+        setTimeout(()=> location.reload(), 1000);
       } else {
-        setTimeout(()=> location.reload(), 600);
+        setTimeout(()=> location.reload(), 800);
       }
-    })
-    .catch(console.error);
+    }).catch(console.error);
 }
 setTimeout(()=>{
   if (current < 5) {
-    const ad = document.getElementById('openAd');
-    if (ad) {
-      ad.click();
-      setTimeout(showNextAd, 10000);
-    } else {
-      console.error('❌ Ad button not found, reloading...');
-      setTimeout(()=>location.reload(), 2000);
-    }
+    document.getElementById('openAd').click();
+    setTimeout(showNextAd, 10000); // 10s delay before verify
   }
 }, 1000);
 </script>
@@ -133,7 +127,6 @@ def user_page(user_id):
     if watched >= total:
         buttons_html = f'<a href="{gift}" target="_blank"><button class="btn complete">🎁 Claim Your Gift</button></a>'
     else:
-        # ✅ Fixed to always show your correct ad link for Monetag mode
         ad_link = "https://otieu.com/4/10060305" if mode == "monetag" else promo
         buttons_html = f'<button id="openAd" class="btn" onclick="window.open(\'{ad_link}\', \'_blank\')">▶ Watch Ad {watched+1}</button>'
 
@@ -149,7 +142,7 @@ def verify_ad(user_id, count):
         logger.info(f"User {user_id} watched ad {count}/5")
     return "ok"
 
-# -------------------- TELEGRAM BOT --------------------
+# -------------------- TELEGRAM --------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     ad_count.setdefault(user_id, 0)
@@ -207,4 +200,79 @@ async def setmode(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await update.message.reply_text("Invalid mode.")
     set_mode(mode)
     ad_count.clear()
-    await update.message.reply_text(f"_
+    await update.message.reply_text(f"✅ Mode set to {mode}")
+
+async def switchmode(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        return
+    current = get_mode()
+    new_mode = "promo" if current == "monetag" else "monetag"
+    set_mode(new_mode)
+    ad_count.clear()
+    await update.message.reply_text(f"🔁 Switched from {current} to {new_mode}")
+
+async def setpromo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        return
+    if not context.args:
+        return await update.message.reply_text("Usage: /setpromo <link>")
+    update_promo_link(context.args[0])
+    await update.message.reply_text("✅ Promo link updated.")
+
+async def currentmode(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(f"🧭 Current mode: {get_mode()}")
+
+async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        return
+    msg = (
+        f"📊 Status:\nUsers: {len(user_list)}\n"
+        f"Completed: {len(verified_users)}"
+    )
+    await update.message.reply_text(msg)
+
+async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = (
+        "🤖 Bot Commands\n"
+        "/start - Begin watching ads\n"
+        "/help - Show this help\n\n"
+        "Admin only:\n"
+        "/updategift <link>\n/getgift\n/resetads\n"
+        "/broadcast <msg>\n/setmode <monetag|promo>\n"
+        "/switchmode\n/setpromo <link>\n/currentmode\n/status"
+    )
+    await update.message.reply_text(text)
+
+async def echo_logger(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logger.info(f"{update.effective_user.id}: {update.message.text}")
+    await update.message.reply_text("✅ Received.")
+
+# -------------------- RUN FLASK --------------------
+def run_flask():
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+
+# -------------------- MAIN --------------------
+def main():
+    threading.Thread(target=run_flask, daemon=True).start()
+    logger.info("Flask running.")
+    app_tg = ApplicationBuilder().token(TOKEN).build()
+
+    app_tg.add_handler(CommandHandler("start", start))
+    app_tg.add_handler(CommandHandler("updategift", updategift))
+    app_tg.add_handler(CommandHandler("getgift", getgift))
+    app_tg.add_handler(CommandHandler("resetads", resetads))
+    app_tg.add_handler(CommandHandler("broadcast", broadcast))
+    app_tg.add_handler(CommandHandler("setmode", setmode))
+    app_tg.add_handler(CommandHandler("switchmode", switchmode))
+    app_tg.add_handler(CommandHandler("setpromo", setpromo))
+    app_tg.add_handler(CommandHandler("currentmode", currentmode))
+    app_tg.add_handler(CommandHandler("status", status))
+    app_tg.add_handler(CommandHandler("help", help_cmd))
+    app_tg.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo_logger))
+
+    logger.info("Bot polling...")
+    app_tg.run_polling()
+
+if __name__ == "__main__":
+    main()
+        
