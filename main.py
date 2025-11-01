@@ -190,6 +190,22 @@ async def updategift(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def run_flask():
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
 
+# Telegram bot /start command
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    ad_count[user_id] = 0
+    keyboard = [[
+        InlineKeyboardButton("🎬 Start Watching Ads",
+            url=f"{os.environ.get('RENDER_EXTERNAL_URL','http://localhost:5000')}/user/{user_id}")
+    ]]
+    await update.message.reply_text(
+        "Welcome! Watch ads to unlock your gift 🎁",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+def main():
+    threading.Thread(target=run_flask, daemon=True).start()
+    
 import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
