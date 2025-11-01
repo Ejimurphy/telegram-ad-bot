@@ -147,7 +147,9 @@ def show_progress(user_id):
           </div>
         """
 
-    return render_template_string(HTML_PAGE, watched=user_progress, buttons=buttons_html)
+    from markupsafe import Markup
+return render_template_string(HTML_PAGE, watched=user_progress, buttons=Markup(buttons_html))
+
 
 @app.route("/verify_ad/<int:user_id>/<int:count>", methods=["POST"])
 def verify_ad(user_id, count):
