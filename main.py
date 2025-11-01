@@ -6,26 +6,30 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, Con
 from flask import Flask, render_template_string, request
 from markupsafe import Markup
 
-# -------------------- CONFIG --------------------
+# -------------------- Configuration --------------------
 TOKEN = "8103309728:AAGKsck7UMUmfjucRRNoEcc3YFazhvz_u3I"
 JOIN_CHANNEL_LINK = "https://t.me/gsf8mqOl0atkMTM0"
 ADMIN_ID = 5236441213  # Sunday Kehinde Akinade
 
-# -------------------- LOGGING --------------------
+# -------------------- Logging --------------------
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# -------------------- FILES --------------------
+# -------------------- File Constants --------------------
 MODE_FILE = "mode.txt"
 PROMO_FILE = "promo.txt"
 GIFT_FILE = "gift.txt"
 
-# -------------------- STORAGE --------------------
-ad_count = {}            # { user_id: ads_watched }
-verified_users = set()   # users who finished all 5 ads
-user_list = set()        # track all users
+# -------------------- Helpers --------------------
+def get_gift_link():
+    if os.path.exists(GIFT_FILE):
+        return open(GIFT_FILE).read().strip()
+    return "https://fonpay.com.ng"
 
-# -------------------- MODE MANAGEMENT --------------------
+def update_gift_link(new_link):
+    with open(GIFT_FILE, "w") as f:
+        f.write(new_link.strip())
+
 def get_mode():
     if os.path.exists(MODE_FILE):
         return open(MODE_FILE).read().strip()
@@ -33,34 +37,30 @@ def get_mode():
 
 def set_mode(mode):
     with open(MODE_FILE, "w") as f:
-        f.write(mode)
+        f.write(mode.strip())
 
 def get_promo_link():
     if os.path.exists(PROMO_FILE):
         return open(PROMO_FILE).read().strip()
     return "https://fonpay.com.ng"
 
-def update_promo_link(link):
+def update_promo_link(new_link):
     with open(PROMO_FILE, "w") as f:
-        f.write(link.strip())
+        f.write(new_link.strip())
 
-def get_gift_link():
-    if os.path.exists(GIFT_FILE):
-        return open(GIFT_FILE).read().strip()
-    return "https://fonpay.com.ng"
+# -------------------- Tracking --------------------
+ad_count = {}
+verified_users = set()
+user_list = set()
 
-def update_gift_link(link):
-    with open(GIFT_FILE, "w") as f:
-        f.write(link.strip())
-
-# -------------------- HTML PAGE --------------------
+# -------------------- Flask HTML --------------------
 HTML_PAGE = """
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Watch Ads to Unlock Your Gift</title>
+<title>Watch Ads</title>
 <style>
   body{font-family:Arial,Helvetica,sans-serif;text-align:center;padding:24px;background:#f9f9f9}
   .btn{padding:12px 20px;border-radius:8px;border:none;background:#0088cc;color:#fff;font-size:16px;margin:8px;cursor:pointer}
@@ -79,37 +79,22 @@ HTML_PAGE = """
       <div class="step {% if i <= watched %}done{% endif %}">{{i}}</div>
     {% endfor %}
   </div>
-  <div id="actionArea">
-    {{buttons}}
-  </div>
+  <div id="actionArea">{{buttons}}</div>
 
 <script>
-let current = {{watched}};
-function showNextAd() {
-  if (current >= 5) return;
-  current++;
-  fetch(`/verify_ad/{{user_id}}/${current}`, { method: "POST" })
+function makeVerify(user, idx){
+  fetch(`/verify_ad/${user}/${idx}`, { method: "POST" })
     .then(r => r.text())
     .then(t => {
-      if (current < 5) {
-        setTimeout(()=> location.reload(), 1000);
-      } else {
-        setTimeout(()=> location.reload(), 800);
-      }
+      setTimeout(()=> location.reload(), 800);
     }).catch(console.error);
 }
-setTimeout(()=>{
-  if (current < 5) {
-    document.getElementById('openAd').click();
-    setTimeout(showNextAd, 10000); // 10s delay before verify
-  }
-}, 1000);
 </script>
 </body>
 </html>
 """
 
-# -------------------- FLASK --------------------
+# -------------------- Flask Setup --------------------
 app = Flask(__name__)
 
 @app.route("/")
@@ -117,162 +102,140 @@ def home():
     return "✅ Telegram Ad Bot is running successfully."
 
 @app.route("/user/<int:user_id>")
-def user_page(user_id):
-    mode = get_mode()
-    promo = get_promo_link()
-    gift = get_gift_link()
-    watched = ad_count.get(user_id, 0)
-    total = 5
+def show_progress(user_id):
+    current_mode = get_mode()
+    promo_link = get_promo_link()
+    user_progress = ad_count.get(user_id, 0)
+    total_ads = 5
 
-    if watched >= total:
-        buttons_html = f'<a href="{gift}" target="_blank"><button class="btn complete">🎁 Claim Your Gift</button></a>'
+    buttons_html = ""
+    if user_progress < total_ads:
+        next_idx = user_progress + 1
+
+        if current_mode == "monetag":
+            buttons_html = f"""
+            <div>
+              <script src='//libtl.com/sdk.js' data-zone='10089898' data-sdk='show_10089898'></script>
+              <button class="btn" onclick="show_10089898().then(() => {{
+                  fetch('/verify_ad/{user_id}/{next_idx}', {{ method: 'POST' }})
+                      .then(r => r.text())
+                      .then(() => setTimeout(() => location.reload(), 800))
+                      .catch(console.error);
+              }})">▶ Watch Ad {next_idx}</button>
+            </div>
+            """
+        else:
+            buttons_html = f"""
+            <div>
+              <a href="{promo_link}" target="_blank">
+                <button class="btn">▶ Open Promo Link</button>
+              </a>
+              <button class="btn" onclick="makeVerify({user_id},{next_idx})">✅ Confirm Visit {next_idx}</button>
+            </div>
+            """
     else:
-        ad_link = "https://otieu.com/4/10060305" if mode == "monetag" else promo
-        buttons_html = f'<button id="openAd" class="btn" onclick="window.open(\'{ad_link}\', \'_blank\')">▶ Watch Ad {watched+1}</button>'
+        gift_link = get_gift_link()
+        buttons_html = f"""
+        <div>
+          <a href="{gift_link}" target="_blank">
+            <button class="btn complete">🎁 Claim Your Gift</button>
+          </a>
+        </div>
+        """
 
-    return render_template_string(HTML_PAGE, watched=watched, buttons=Markup(buttons_html), user_id=user_id)
+    return render_template_string(HTML_PAGE, watched=user_progress, buttons=Markup(buttons_html))
 
 @app.route("/verify_ad/<int:user_id>/<int:count>", methods=["POST"])
 def verify_ad(user_id, count):
     prev = ad_count.get(user_id, 0)
-    if count == prev + 1 and count <= 5:
-        ad_count[user_id] = count
-        if count >= 5:
+    if count == prev + 1:
+        ad_count[user_id] = prev + 1
+        logger.info(f"User {user_id} verified ad #{count} (now {ad_count[user_id]})")
+        if ad_count[user_id] >= 5:
             verified_users.add(user_id)
-        logger.info(f"User {user_id} watched ad {count}/5")
     return "ok"
 
-# -------------------- TELEGRAM --------------------
+# -------------------- Telegram Bot Commands --------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     ad_count.setdefault(user_id, 0)
     user_list.add(user_id)
-    mode = get_mode()
-    web = os.environ.get('RENDER_EXTERNAL_URL', f"http://localhost:{os.environ.get('PORT', 5000)}")
-    link = f"{web}/user/{user_id}"
-    keyboard = [[InlineKeyboardButton("🎬 Start Watching Ads", url=link)]]
+    web = os.environ.get('RENDER_EXTERNAL_URL', f'http://localhost:{os.environ.get("PORT",5000)}')
+    keyboard = [[InlineKeyboardButton("🎬 Start Watching Ads", url=f"{web}/user/{user_id}")]]
     await update.message.reply_text(
-        f"Welcome! Current Mode: *{mode}*\n\nWatch 5 ads to unlock your gift 🎁",
+        f"Welcome! Current Mode: *{get_mode()}*\n\nWatch 5 ads to unlock your gift 🎁",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown"
     )
 
 async def updategift(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
-        return await update.message.reply_text("🚫 Admin only.")
+        return await update.message.reply_text("🚫 Permission denied.")
     if not context.args:
         return await update.message.reply_text("Usage: /updategift <link>")
-    update_gift_link(context.args[0])
-    await update.message.reply_text("✅ Gift link updated.")
+    link = context.args[0]
+    update_gift_link(link)
+    await update.message.reply_text(f"✅ Gift link updated to:\n{link}")
 
 async def getgift(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id == ADMIN_ID:
-        await update.message.reply_text(f"🎁 Gift link:\n{get_gift_link()}")
+    if update.effective_user.id != ADMIN_ID:
+        return await update.message.reply_text("🚫 Admin only.")
+    await update.message.reply_text(f"🎁 Current Gift Link:\n{get_gift_link()}")
 
 async def resetads(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id == ADMIN_ID:
-        ad_count.clear()
-        verified_users.clear()
-        await update.message.reply_text("✅ All ad progress reset.")
+    if update.effective_user.id != ADMIN_ID:
+        return await update.message.reply_text("🚫 Admin only.")
+    ad_count.clear()
+    verified_users.clear()
+    await update.message.reply_text("✅ All ad progress reset.")
 
 async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
-        return
+        return await update.message.reply_text("🚫 Admin only.")
     if not context.args:
         return await update.message.reply_text("Usage: /broadcast <message>")
     message = " ".join(context.args)
     sent = 0
     for uid in list(user_list):
         try:
-            await context.bot.send_message(uid, message)
+            await context.bot.send_message(chat_id=uid, text=message)
             sent += 1
-        except Exception:
+        except:
             pass
-    await update.message.reply_text(f"✅ Sent to {sent} users.")
+    await update.message.reply_text(f"✅ Message sent to {sent} users.")
 
 async def setmode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
-        return
+        return await update.message.reply_text("🚫 Admin only.")
     if not context.args:
         return await update.message.reply_text("Usage: /setmode <monetag|promo>")
     mode = context.args[0].lower()
     if mode not in ["monetag", "promo"]:
-        return await update.message.reply_text("Invalid mode.")
+        return await update.message.reply_text("⚠️ Invalid mode.")
     set_mode(mode)
-    ad_count.clear()
-    await update.message.reply_text(f"✅ Mode set to {mode}")
+    await update.message.reply_text(f"✅ Mode set to: {mode}")
 
 async def switchmode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
-        return
+        return await update.message.reply_text("🚫 Admin only.")
     current = get_mode()
-    new_mode = "promo" if current == "monetag" else "monetag"
-    set_mode(new_mode)
-    ad_count.clear()
-    await update.message.reply_text(f"🔁 Switched from {current} to {new_mode}")
+    new = "promo" if current == "monetag" else "monetag"
+    set_mode(new)
+    await update.message.reply_text(f"🔁 Switched from *{current}* to *{new}*", parse_mode="Markdown")
 
 async def setpromo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
-        return
+        return await update.message.reply_text("🚫 Admin only.")
     if not context.args:
         return await update.message.reply_text("Usage: /setpromo <link>")
     update_promo_link(context.args[0])
-    await update.message.reply_text("✅ Promo link updated.")
+    await update.message.reply_text(f"✅ Promo link updated.")
 
 async def currentmode(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(f"🧭 Current mode: {get_mode()}")
+    await update.message.reply_text(f"🧭 Current Mode: {get_mode()}")
 
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
-        return
-    msg = (
-        f"📊 Status:\nUsers: {len(user_list)}\n"
-        f"Completed: {len(verified_users)}"
-    )
-    await update.message.reply_text(msg)
-
-async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = (
-        "🤖 Bot Commands\n"
-        "/start - Begin watching ads\n"
-        "/help - Show this help\n\n"
-        "Admin only:\n"
-        "/updategift <link>\n/getgift\n/resetads\n"
-        "/broadcast <msg>\n/setmode <monetag|promo>\n"
-        "/switchmode\n/setpromo <link>\n/currentmode\n/status"
-    )
-    await update.message.reply_text(text)
-
-async def echo_logger(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    logger.info(f"{update.effective_user.id}: {update.message.text}")
-    await update.message.reply_text("✅ Received.")
-
-# -------------------- RUN FLASK --------------------
-def run_flask():
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
-
-# -------------------- MAIN --------------------
-def main():
-    threading.Thread(target=run_flask, daemon=True).start()
-    logger.info("Flask running.")
-    app_tg = ApplicationBuilder().token(TOKEN).build()
-
-    app_tg.add_handler(CommandHandler("start", start))
-    app_tg.add_handler(CommandHandler("updategift", updategift))
-    app_tg.add_handler(CommandHandler("getgift", getgift))
-    app_tg.add_handler(CommandHandler("resetads", resetads))
-    app_tg.add_handler(CommandHandler("broadcast", broadcast))
-    app_tg.add_handler(CommandHandler("setmode", setmode))
-    app_tg.add_handler(CommandHandler("switchmode", switchmode))
-    app_tg.add_handler(CommandHandler("setpromo", setpromo))
-    app_tg.add_handler(CommandHandler("currentmode", currentmode))
-    app_tg.add_handler(CommandHandler("status", status))
-    app_tg.add_handler(CommandHandler("help", help_cmd))
-    app_tg.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo_logger))
-
-    logger.info("Bot polling...")
-    app_tg.run_polling()
-
-if __name__ == "__main__":
-    main()
+        return await update.message.reply_text("🚫 Admin only.")
+    msg = f"📊 Users: {len(user_list)} | Completed: {len(verified
     
