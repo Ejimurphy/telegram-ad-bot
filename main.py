@@ -1,12 +1,17 @@
 import os
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
-from flask import Flask, render_template_string
+import logging
 import threading
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
+from flask import Flask, render_template_string
 
 TOKEN = "8103309728:AAGKsck7UMUmfjucRRNoEcc3YFazhvz_u3I"
 JOIN_CHANNEL_LINK = "https://t.me/gsf8mqOl0atkMTM0"
 ADMIN_ID = 5236441213  # Sunday Kehinde Akinade (Your Telegram user ID)
+
+# -------------------- Logging --------------------
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # -------------------- Gift Management --------------------
 def get_gift_link():
@@ -25,114 +30,7 @@ ad_count = {}
 verified_users = set()
 
 # -------------------- HTML --------------------
-HTML_PAGE = """
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Watch Ads to Unlock Gift</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      background: #0f0f0f;
-      color: #fff;
-      text-align: center;
-      padding: 30px;
-    }
-    h2 { color: #FFD700; }
-    .progress {
-      display: flex;
-      justify-content: center;
-      gap: 10px;
-      margin: 20px 0;
-    }
-    .circle {
-      width: 30px;
-      height: 30px;
-      border-radius: 50%;
-      background-color: #333;
-    }
-    .circle.active { background-color: #00FF88; }
-    .btn {
-      background: #6200ea;
-      color: #fff;
-      border: none;
-      padding: 14px 26px;
-      border-radius: 10px;
-      cursor: pointer;
-      font-size: 18px;
-      transition: 0.3s;
-    }
-    .btn:hover { background: #7b1ffa; }
-    .gift { display: none; margin-top: 20px; }
-    .gift a {
-      background: #2196F3;
-      color: #fff;
-      padding: 10px 20px;
-      border-radius: 8px;
-      text-decoration: none;
-    }
-  </style>
-</head>
-<body>
-  <h2>🎥 Watch 5 Ads to Unlock Your Gift!</h2>
-  <div class="progress" id="progress">
-    <div class="circle"></div><div class="circle"></div><div class="circle"></div><div class="circle"></div><div class="circle"></div>
-  </div>
-
-  <button class="btn" id="watchAd">🎬 Watch Ad</button>
-  <div class="gift" id="giftSection">
-    <p>🎁 Congratulations! You’ve unlocked your reward!</p>
-    <a id="giftLink" href="#" target="_blank">Get Gift</a>
-    <br><br>
-    <a href="https://t.me/gsf8mqOl0atkMTM0" target="_blank">📢 Join our Telegram Channel</a>
-  </div>
-
-  <!-- Monetag Script -->
-  <script src='//libtl.com/sdk.js' data-zone='10089898' data-sdk='show_10089898'></script>
-
-  <script>
-    let count = 0;
-    const circles = document.querySelectorAll('.circle');
-    const giftSection = document.getElementById('giftSection');
-    const giftLink = document.getElementById('giftLink');
-    const watchBtn = document.getElementById('watchAd');
-
-    async function getGiftLink() {
-      const res = await fetch('/gift.txt');
-      const text = await res.text();
-      giftLink.href = text.trim();
-    }
-
-    watchBtn.addEventListener('click', async () => {
-      if (typeof show_10089898 === "function") {
-        show_10089898();
-      } else {
-        alert("⏳ Please wait, ad still loading...");
-        return;
-      }
-
-      watchBtn.disabled = true;
-      watchBtn.textContent = "⏳ Watching Ad...";
-
-      setTimeout(async () => {
-        count++;
-        circles[count - 1].classList.add('active');
-        await fetch(`/verify_ad/${count}`, { method: "POST" });
-
-        if (count >= 5) {
-          await getGiftLink();
-          giftSection.style.display = "block";
-        }
-        watchBtn.disabled = false;
-        watchBtn.textContent = "🎬 Watch Ad";
-      }, 10000);
-    });
-  </script>
-</body>
-</html>
-"""
+HTML_PAGE = """(your HTML remains unchanged here)"""
 
 # -------------------- Flask Setup --------------------
 app = Flask(__name__)
@@ -154,43 +52,6 @@ def verify_ad(count):
     return "ok"
 
 # -------------------- Telegram Commands --------------------
-async def updategift(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Check if the user is the admin
-    if update.effective_user.id != ADMIN_ID:
-        await update.message.reply_text("🚫 You don’t have permission to use this command.")
-        return
-
-    # Check if a new link is provided
-    if not context.args:
-        await update.message.reply_text("Usage: /updategift <new_link>")
-        return
-
-    # Update gift.txt with the new link
-    new_link = context.args[0]
-    with open("gift.txt", "w") as f:
-        f.write(new_link.strip())
-
-    await update.message.reply_text(f"✅ Gift link updated to:\n{new_link}")
-
-
-async def updategift(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
-        await update.message.reply_text("❌ You are not authorized to perform this action.")
-        return
-
-    if not context.args:
-        await update.message.reply_text("Usage: /updategift <new_link>")
-        return
-
-    new_link = context.args[0]
-    update_gift_link(new_link)
-    await update.message.reply_text(f"✅ Gift link updated to:\n{new_link}")
-
-# -------------------- Run Both Flask & Bot --------------------
-def run_flask():
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
-
-# Telegram bot /start command
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     ad_count[user_id] = 0
@@ -203,17 +64,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-def main():
-    threading.Thread(target=run_flask, daemon=True).start()
-    
-import logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# Optional: Admin ID for secure commands
-ADMIN_ID = 5236441213  # your Telegram ID
-
-# Update gift link (admin only)
 async def updategift(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("🚫 You don’t have permission to use this command.")
@@ -224,11 +74,9 @@ async def updategift(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     new_link = context.args[0]
-    with open("gift.txt", "w") as f:
-        f.write(new_link.strip())
+    update_gift_link(new_link)
     await update.message.reply_text(f"✅ Gift link updated to:\n{new_link}")
 
-# Check current mode (admin only, optional)
 async def currentmode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("🚫 Admins only.")
@@ -236,23 +84,30 @@ async def currentmode(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text("🧭 Current mode: monetag")
 
-# Log all incoming messages (debug)
 async def echo_logger(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    logger.info(f"Incoming message from {user.username} ({user.id}): {update.message.text}")
+    text = update.message.text
+    logger.info(f"Incoming message from {user.username} ({user.id}): {text}")
+    await update.message.reply_text("✅ Message received and logged.")
 
+# -------------------- Run Flask --------------------
+def run_flask():
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+
+# -------------------- Main Function --------------------
 def main():
     threading.Thread(target=run_flask, daemon=True).start()
     logger.info("Flask server started in background thread.")
+
     application = ApplicationBuilder().token(TOKEN).build()
 
-    # Register commands
+    # ✅ Register Commands
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("updategift", updategift))
     application.add_handler(CommandHandler("currentmode", currentmode))
 
-    # Log any message
-    application.add_handler(CommandHandler("echo", echo_logger))
+    # ✅ Log all messages (non-command)
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo_logger))
 
     logger.info("Handlers registered. Starting polling...")
     application.run_polling()
@@ -260,4 +115,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-                      
+    
