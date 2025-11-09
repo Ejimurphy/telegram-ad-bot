@@ -139,7 +139,7 @@ HTML_PAGE = """
 <body>
   <div class="card" role="main">
     <div class="title">Canva Pro Tips</div>
-    <div class="subtitle">Watch 5 short ads to unlock Canva Pro access — fast and easy.</div>
+    <div class="subtitle">Watch {{ total }} short ads to unlock Canva Pro access — fast and easy.</div>
 
     <div class="steps" aria-hidden="true">
       {% for i in range(1,6) %}
@@ -160,7 +160,7 @@ HTML_PAGE = """
       <div id="inactiveMsg">⏳ You’ve been inactive for a while, please start again.</div>
     </div>
 
-    <div class="small">After completing all 5 ads, the <strong>Access Canva Pro</strong> button will appear above.</div>
+    <div class="small">After completing all {{ total }} Ads, the <strong>Access Canva Pro</strong> button will appear above.</div>
 
     <div class="credit">
       💎 <b>Developed by Ejimurphy</b><br>
