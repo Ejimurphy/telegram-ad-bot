@@ -253,7 +253,7 @@ def user_page(user_id):
     mode = get_mode()
     promo_link = get_promo_link()
     watched = ad_count.get(user_id, 0)
-    total = 5
+    total = get_required_ads()
 
     # Monetag SDK script (insert once)
     monetag_script = f"<script src='//libtl.com/sdk.js' data-zone='{MONETAG_ZONE}' data-sdk='show_{MONETAG_ZONE}'></script>"
