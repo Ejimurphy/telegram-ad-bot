@@ -368,6 +368,20 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown"
     )
 
+async def setads(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id):
+        return await update.message.reply_text("🚫 Admin only.")
+    if not context.args or not context.args[0].isdigit():
+        return await update.message.reply_text("Usage: /setads <number>")
+    n = int(context.args[0])
+    if n < 1 or n > 100:
+        return await update.message.reply_text("⚠️ Choose a number between 1 and 100.")
+    set_required_ads(n)
+    await update.message.reply_text(f"✅ Required ads updated to {n}")
+
+async def getads(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(f"🎯 Current required ads: {get_required_ads()}")
+
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (
         "🤖 Bot Commands\n"
