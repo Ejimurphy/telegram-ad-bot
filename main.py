@@ -327,6 +327,27 @@ def reset_progress(user_id):
     logger.info("Reset progress for user %s via reset endpoint", user_id)
     return "ok"
 
+@app.route("/get_ads_count", methods=["GET"])
+def get_ads_count():
+    return {"status":"ok", "required_ads": get_required_ads()}
+
+@app.route("/set_ads_count", methods=["POST"])
+def set_ads_count():
+    # expects JSON { "admin_id": 5236441213, "count": 10 }
+    data = request.get_json(silent=True) or {}
+    admin_id = data.get("admin_id")
+    if admin_id != ADMIN_ID:
+        return {"status":"error", "message":"Unauthorized"}, 403
+    try:
+        cnt = int(data.get("count", 0))
+        if cnt < 1 or cnt > 100:
+            return {"status":"error", "message":"count must be 1..100"}, 400
+        set_required_ads(cnt)
+        return {"status":"ok", "required_ads": cnt}
+    except Exception as e:
+        return {"status":"error", "message": str(e)}, 400
+        
+
 @app.route("/mark_closed/<int:user_id>", methods=["POST"])
 def mark_closed(user_id):
     # Called by beforeunload (sendBeacon). We record timestamp and only reset after GRACE_SECONDS.
