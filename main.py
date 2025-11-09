@@ -508,6 +508,8 @@ def run_bot():
     application.add_handler(CommandHandler("setpromo", setpromo))
     application.add_handler(CommandHandler("currentmode", currentmode))
     application.add_handler(CommandHandler("status", status))
+    application.add_handler(CommandHandler("setads", setads))
+    application.add_handler(CommandHandler("getads", getads))
 
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo_logger))
 
