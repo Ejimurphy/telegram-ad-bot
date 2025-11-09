@@ -214,7 +214,7 @@ const msg = document.getElementById('msg');
 
 joinChannel.href = channelLink;
 premium.href = premiumLink;
-giftUrlBox.textContent = 'Locked until 5 ads watched';
+giftUrlBox.textContent = `Locked until {{ total }} ads watched`;
 
 let steps = [
   document.getElementById('step1'),
@@ -259,7 +259,7 @@ function notifyServerAdCompleted(){
       const c = j.count || 0;
       const unlocked = !!j.unlocked;
       updateUI(c, unlocked, j.gift_url);
-      showMsg("✅ Ad counted. Progress: " + c + "/5");
+      showMsg("✅ Ad counted. Progress: " + c + "/{{ total }}");
     } else {
       showMsg("⚠️ Server error: " + (j.message || "unknown"));
     }
@@ -283,7 +283,7 @@ copyBtn.addEventListener('click', ()=> {
 // Gift button click: if unlocked open link; if locked prompt to watch ad
 giftBtn.addEventListener('click', (e)=>{
   if(!giftBtn.classList.contains('unlocked')){
-    showMsg("🔒 Watch 5 ads to unlock the gift.");
+    showMsg("🔒 Watch {{ total }} ads to unlock the gift.");
     return;
   }
   // open gift url in new tab
