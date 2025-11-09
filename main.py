@@ -303,15 +303,16 @@ def user_page(user_id):
 @app.route("/verify_ad/<int:user_id>/<int:count>", methods=["POST"])
 def verify_ad(user_id, count):
     prev = ad_count.get(user_id, 0)
+    total = get_required_ads()
     # Accept only sequential verifies to prevent skipping
-    if count == prev + 1 and count <= 5:
+    if count == prev + 1 and count <= total:
         ad_count[user_id] = count
         user_list.add(user_id)
         logger.info("User %s verified ad %d (now %d)", user_id, count, ad_count[user_id])
-        if ad_count[user_id] >= 5:
+        if ad_count[user_id] >= total:
             verified_users.add(user_id)
     else:
-        logger.info("Ignored verify for user %s: count=%s prev=%s", user_id, count, prev)
+        logger.info("Ignored verify for user %s: count=%s prev=%s total=%s", user_id, count, prev, total)
     return "ok"
 
 @app.route("/reset_progress/<int:user_id>", methods=["POST"])
