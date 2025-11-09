@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Watch Ads</title>
+
+  <!-- LibTL Ad Network SDK -->
+  <script src="//libtl.com/sdk.js" data-zone="10089898" data-sdk="show_10089898"></script>
+
+  <style>
+    body {
+      background: #0f0f0f;
+      color: #fff;
+      font-family: 'Segoe UI', sans-serif;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      margin: 0;
+    }
+    .btn {
+      background: #6200ea;
+      color: #fff;
+      border: none;
+      padding: 16px 30px;
+      border-radius: 10px;
+      font-size: 18px;
+      cursor: pointer;
+      transition: 0.3s;
+    }
+    .btn:hover { background: #7b1ffa; }
+    .msg {
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.8);
+      padding: 10px 20px;
+      border-radius: 8px;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="msg" id="msgBox"></div>
+  <button class="btn" id="adBtn" onclick="showAdDelay()">🎬 Watch Ad</button>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const callback = params.get('callback');
+    const user_id = params.get('user_id');
+    const token = params.get('token');
+
+    function showAdDelay() {
+      const btn = document.getElementById('adBtn');
+      btn.disabled = true;
+      btn.textContent = '⏳ Please wait 3 seconds...';
+      setTimeout(showAd, 3000);
+    }
+
+    function showAd() {
+      const btn = document.getElementById('adBtn');
+      if (typeof show_10089898 === 'function') {
+        // Call the ad network
+        show_10089898().then(() => {
+          showMsg("✅ Ad shown successfully!");
+          sendCallback();
+        }).catch(() => {
+          showMsg("⚠️ Failed to load ad.");
+        });
+      } else {
+        showMsg("⚠️ Ad service not ready.");
+      }
+      btn.disabled = false;
+      btn.textContent = '🎬 Watch Ad';
+    }
+
+    function sendCallback() {
+      if (!callback || !user_id || !token) {
+        showMsg("⚠️ Missing parameters. Please open this page from Telegram.");
+        return;
+      }
+
+      fetch(callback, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: user_id,
+          token: token,
+          result: 'ad_completed'
+        })
+      })
+      .then(r => r.json())
+      .then(res => {
+        if (res.status === 'ok') {
+          showMsg("🎉 Reward credited successfully!");
+        } else {
+          showMsg("⚠️ Could not confirm reward.");
+        }
+      })
+      .catch(() => showMsg("⚠️ Network error."));
+    }
+
+    function showMsg(text) {
+      const msg = document.getElementById('msgBox');
+      msg.textContent = text;
+      msg.style.display = 'block';
+      setTimeout(() => msg.style.display = 'none', 3000);
+    }
+  </script>
+</body>
+</html>
