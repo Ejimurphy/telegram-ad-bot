@@ -238,7 +238,7 @@ function updateUI(count, unlocked, gift_url){
     giftUrlBox.textContent = gift_url || giftUrlProvided;
   } else {
     giftBtn.classList.remove('unlocked');
-    giftUrlBox.textContent = 'Locked until 5 ads watched';
+    giftUrlBox.textContent = `Locked until {{ total }} ads watched`;
   }
 }
 
