@@ -1,6 +1,9 @@
+# main.py
 import os
+import time
 import logging
 import threading
+from datetime import datetime
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
     ApplicationBuilder,
@@ -19,6 +22,10 @@ PREMIUM_APPS_LINK = "https://t.me/gsf8mqOl0atkMTM0"
 CHEAP_DATA_LINK = "https://play.google.com/store/apps/details?id=fonpaybusiness.aowd"
 MONETAG_ZONE = "10089898"
 MONETAG_LINK = f"https://libtl.com/zone/{MONETAG_ZONE}"
+
+# Grace and inactivity (seconds)
+GRACE_SECONDS = 60            # allow 1 minute after browser close before reset
+INACTIVITY_MS = 1 * 60 * 1000  # 1 minute inactivity (client-side)
 
 # -------------------- LOGGING --------------------
 logging.basicConfig(level=logging.INFO)
@@ -76,8 +83,10 @@ ad_count = {}          # user_id -> verified ads count (0..5)
 verified_users = set() # completed users (>=5)
 user_list = set()      # seen users (for broadcast / status)
 
+# track browser-close times so reset only after GRACE_SECONDS
+close_times = {}       # user_id -> timestamp (time.time())
+
 # -------------------- HTML TEMPLATE --------------------
-# Note: uses monetag SDK call show_<ZONE>() if available, else fallback to opening MONETAG_LINK in new tab
 HTML_PAGE = """
 <!doctype html>
 <html lang="en">
@@ -147,27 +156,21 @@ HTML_PAGE = """
 /*
  Inactivity handling:
  - Listen for user activity (mousemove, keydown, touchstart, click)
- - Reset a 5-minute timer on activity
+ - Reset a 1-minute timer on activity
  - When timer fires: show message, call server to reset user's progress, then reload page
- Also, on beforeunload we attempt to notify server via navigator.sendBeacon to reset progress (best-effort)
+ Also, on beforeunload we attempt to notify server via navigator.sendBeacon to mark close (server will only reset after GRACE_SECONDS)
 */
 (function(){
-  const INACTIVITY_MS = 5 * 60 * 1000; // 5 minutes
+  const INACTIVITY_MS = {{ inactivity_ms }};
   let timer = null;
   const userId = {{user_id}};
   const inactiveMsg = document.getElementById('inactiveMsg');
-
-  function resetProgressOnServer() {
-    try {
-      fetch(`/reset_progress/${userId}`, { method: 'POST' }).catch(()=>{});
-    } catch(e){}
-  }
 
   function showInactiveAndReset() {
     inactiveMsg.style.display = 'block';
     // notify server and reload after short delay
     fetch(`/reset_progress/${userId}`, { method: 'POST' })
-      .finally(()=> setTimeout(()=> location.reload(), 2000));
+      .finally(()=> setTimeout(()=> location.reload(), 1200));
   }
 
   function resetTimer() {
@@ -181,17 +184,17 @@ HTML_PAGE = """
     window.addEventListener(ev, resetTimer, { passive: true });
   });
 
-  // initial start
+  // start timer
   resetTimer();
 
-  // beforeunload - try sendBeacon to reset on close
+  // beforeunload - mark closed with timestamp (server will wait GRACE_SECONDS before resetting)
   window.addEventListener('beforeunload', function(){
     try {
-      const url = `/reset_progress/${userId}`;
+      const url = `/mark_closed/${userId}`;
       if (navigator.sendBeacon) {
         navigator.sendBeacon(url);
       } else {
-        // best-effort fetch
+        // fallback synchronous XHR (best-effort)
         var xhr = new XMLHttpRequest();
         xhr.open("POST", url, false);
         try { xhr.send(); } catch(e) {}
@@ -213,6 +216,23 @@ def index():
 
 @app.route("/user/<int:user_id>")
 def user_page(user_id):
+    # If user had closed previously, check grace period and reset only after GRACE_SECONDS passed.
+    ct = close_times.get(user_id)
+    now_ts = time.time()
+    if ct is not None:
+        # If close timestamp is older than GRACE_SECONDS, reset the progress
+        if now_ts - ct >= GRACE_SECONDS:
+            logger.info("Grace expired for user %s — resetting progress", user_id)
+            if user_id in ad_count:
+                ad_count[user_id] = 0
+            if user_id in verified_users:
+                verified_users.discard(user_id)
+            # remove recorded close time after reset
+            close_times.pop(user_id, None)
+        else:
+            # still within grace period: keep progress (do not reset yet)
+            logger.info("User %s within close grace (%.1fs left)", user_id, GRACE_SECONDS - (now_ts - ct))
+
     mode = get_mode()
     promo_link = get_promo_link()
     watched = ad_count.get(user_id, 0)
@@ -224,26 +244,25 @@ def user_page(user_id):
     if watched < total:
         next_idx = watched + 1
 
-        # watch button: uses SDK when available, otherwise fallback open + timed verify
-        # Build the JS-invoking button as a single string (careful with quotes)
+        # Build watch button JS safely using percent-style formatting to avoid f-string brace issues
+        # It first tries to call SDK function window['show_<ZONE>'](), else opens zone link and falls back to timed verify.
         watch_button = (
-            "<button class='btn btn-primary' id='watchBtn' "
-            "onclick=\"(function(){"
-            f" if (typeof show_{MONETAG_ZONE} === 'function') {{"
-            f"  show_{MONETAG_ZONE}().then(function(){{"
-            f"    fetch('/verify_ad/{user_id}/{next_idx}', {{ method: 'POST' }})"
-            "      .then(function(){ setTimeout(function(){ location.reload(); }, 700); })"
-            "      .catch(function(e){ console.error(e); });"
-            "  }}).catch(function(e){ console.error(e); });"
-            " } else {"
-            f"  var w = window.open('{MONETAG_LINK}','_blank');"
+            "<button class='btn btn-primary' id='watchBtn' onclick=\"(function(){"
+            "var sdkFn = window['show_%s'];"
+            "if (typeof sdkFn === 'function') {"
+            "  sdkFn().then(function(){"
+            "    fetch('/verify_ad/%s/%s', { method: 'POST' })"
+            "      .then(function(){ setTimeout(function(){ location.reload(); }, 700); });"
+            "  }).catch(function(e){ console.error(e); alert('Ad failed to load. Try again.'); });"
+            "} else {"
+            "  var w = window.open('%s','_blank');"
             "  setTimeout(function(){"
-            f"    fetch('/verify_ad/{user_id}/{next_idx}', {{ method: 'POST' }})"
+            "    fetch('/verify_ad/%s/%s', { method: 'POST' })"
             "      .then(function(){ setTimeout(function(){ location.reload(); }, 700); });"
             "  }, 12000);"
-            " }"
+            "}"
             "})()\">🎬 Watch Ads to Unlock Canva Pro</button>"
-        )
+        ) % (MONETAG_ZONE, user_id, next_idx, MONETAG_LINK, user_id, next_idx)
     else:
         # completed - show gift + stacked buttons
         gift = get_gift_link()
@@ -260,7 +279,8 @@ def user_page(user_id):
         watch_button=watch_button,
         premium_button=premium_button,
         cheapdata_button=cheapdata_button,
-        user_id=user_id
+        user_id=user_id,
+        inactivity_ms=INACTIVITY_MS
     )
 
 @app.route("/verify_ad/<int:user_id>/<int:count>", methods=["POST"])
@@ -279,12 +299,21 @@ def verify_ad(user_id, count):
 
 @app.route("/reset_progress/<int:user_id>", methods=["POST"])
 def reset_progress(user_id):
-    # Reset progress for the user (called by inactivity timer or beforeunload)
+    # Immediate reset used by inactivity timer (client)
     if user_id in ad_count:
         ad_count[user_id] = 0
     if user_id in verified_users:
         verified_users.discard(user_id)
+    # also clear any recorded close time (we treat inactivity as immediate reset)
+    close_times.pop(user_id, None)
     logger.info("Reset progress for user %s via reset endpoint", user_id)
+    return "ok"
+
+@app.route("/mark_closed/<int:user_id>", methods=["POST"])
+def mark_closed(user_id):
+    # Called by beforeunload (sendBeacon). We record timestamp and only reset after GRACE_SECONDS.
+    close_times[user_id] = time.time()
+    logger.info("Marked closed time for user %s at %s", user_id, datetime.utcfromtimestamp(close_times[user_id]).isoformat())
     return "ok"
 
 # -------------------- TELEGRAM COMMANDS --------------------
@@ -340,6 +369,7 @@ async def resetads(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await update.message.reply_text("🚫 Admin only.")
     ad_count.clear()
     verified_users.clear()
+    close_times.clear()
     await update.message.reply_text("✅ All ad progress reset.")
 
 async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
