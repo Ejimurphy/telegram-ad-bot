@@ -226,7 +226,7 @@ let steps = [
 
 // update UI from server on load (optional)
 function updateUI(count, unlocked, gift_url){
-  for(let i=0;i<5;i++){
+  for(let i=0;i<{{ total }};i++){ ... }
     if(i < count){
       steps[i].classList.add('done');
     } else {
