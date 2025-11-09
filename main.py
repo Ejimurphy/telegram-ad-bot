@@ -47,6 +47,23 @@ if not os.path.exists(GIFT_FILE):
     with open(GIFT_FILE, "w") as f:
         f.write("https://www.canva.com/brand/join?token=BrnBqEuFTwf7IgNrKWfy4A&br")
 
+# -------------------- DYNAMIC ADS COUNT --------------------
+TOTAL_ADS_FILE = "total_ads.txt"
+
+def get_required_ads():
+    try:
+        return int(open(TOTAL_ADS_FILE).read().strip())
+    except Exception:
+        return 5  # default
+
+def set_required_ads(n: int):
+    n = int(n)
+    with open(TOTAL_ADS_FILE, "w") as f:
+        f.write(str(n))
+
+# load at start (keeps backward compatibility)
+TOTAL_ADS = get_required_ads()
+
 # -------------------- HELPERS --------------------
 def get_mode():
     try:
